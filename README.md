@@ -13,7 +13,7 @@ It does this with a **catalog** of foods plus **per-cat assessments**, combined 
 | **Safety** | Samson (≈30 allergies) | Can this food be bought **at all**? |
 | **Acceptance** | Troy (picky) | Can it be bought **again**? |
 
-A food is **reorderable** only if it clears both: no safety-gate cat marks it `unsafe`, and no acceptance-gate cat `rejects` it. Gwen's preferences are recorded but don't gate.
+A food is **reorderable** only if it clears both: no safety-gate cat marks it `unsafe`, and no acceptance-gate cat `rejects` it — and it isn't flagged `do_not_buy` (a household "do not buy again" decision, independent of any single cat). Gwen's preferences are recorded but don't gate.
 
 Per-cat acceptance is a graded scale: `loves / eats / tolerates / rejects / never_tried`. Safety is `safe / unsafe / unknown`.
 

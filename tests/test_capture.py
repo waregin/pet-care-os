@@ -54,7 +54,8 @@ def test_blank_row_is_noop():
 def test_filled_row_upserts_and_drives_gate():
     with connect() as conn:
         # Troy rejects a previously-fine food -> it leaves the reorder list
-        result = preferences.import_row(conn, "", "catalina catch", "Troy", "rejects", "", "")
+        result = preferences.import_row(conn, "Earthborn Holistic", "catalina catch", "Troy",
+                                        "rejects", "", "")
         names = {r["name"] for r in preferences.reorder_list(conn)}
     assert result == "updated"
     assert "catalina catch" not in names

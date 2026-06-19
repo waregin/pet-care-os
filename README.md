@@ -42,11 +42,18 @@ petcareos add-pet  --name Henry --species dog
 ```
 
 ### Capturing assessments (bulk, via CSV)
+`data/assessments.csv` is the ready-to-fill grid for the **current rotation** (regenerate with
+`petcareos template --current --out data/assessments.csv`). Set Troy's `acceptance`
+(loves/eats/tolerates/rejects); blanks are left unchanged.
 ```bash
-petcareos template --out caps.csv      # food x cat grid, pre-filled with current values
-# edit caps.csv: set acceptance (loves/eats/tolerates/rejects) and safety (safe/unsafe); blanks ignored
-petcareos import-assessments --in caps.csv
+petcareos import-assessments --in data/assessments.csv
 petcareos list-assessments --pet Troy
+```
+Recording what you actually bought, including a food not yet in the catalog? Add a row and let
+import create it:
+```bash
+# row: Tiki Cat,Ahi Tuna,Troy,loves,,bought this batch
+petcareos import-assessments --in newbuys.csv --create-missing
 ```
 …or one at a time: `petcareos assess --pet Troy --food "tuna & shrimp" --acceptance loves`
 

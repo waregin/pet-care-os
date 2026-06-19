@@ -94,9 +94,12 @@ def list_assessments(conn, pet: Optional[str] = None, food: Optional[str] = None
 TEMPLATE_COLUMNS = ["brand", "name", "pet", "acceptance", "safety", "note"]
 
 
-def template_rows(conn) -> list[dict]:
-    """Full food x pet grid pre-filled with current values — the CSV capture form.
-    Empty acceptance/safety cells = not yet assessed (fill them in, blanks are left unchanged)."""
+def template_rows(conn, current: bool = False, include_do_not_buy: bool = False) -> list[dict]:
+    """Food x pet grid pre-filled with current values — the CSV capture form.
+    Empty acceptance/safety cells = not yet assessed (blanks are left unchanged on import).
+      current             -> only hand-entered rotation foods (source='manual'), not imported history
+      include_do_not_buy  -> also include foods flagged do_not_buy (default: skip them)
+    You can append rows for brand-new foods and import with --create-missing."""
     return conn.execute(
         """
         SELECT f.brand,
@@ -109,15 +112,19 @@ def template_rows(conn) -> list[dict]:
         CROSS JOIN pets p
         LEFT JOIN assessments a ON a.food_id = f.id AND a.pet_id = p.id
         WHERE f.discontinued = FALSE
+          AND (%(include_dnb)s::boolean OR f.do_not_buy = FALSE)
+          AND (NOT %(current)s::boolean OR f.source = 'manual')
         ORDER BY f.brand NULLS FIRST, f.name, p.name
-        """
+        """,
+        {"current": current, "include_dnb": include_do_not_buy},
     ).fetchall()
 
 
-def import_row(conn, brand, name, pet, acceptance, safety, note) -> bool:
-    """Apply one template row; returns True if it changed anything. A fully blank row
-    (no acceptance/safety/note) is a no-op so the grid's empty cells don't create
-    placeholder rows. Raises ValueError with a clear message on bad pet/food/value."""
+def import_row(conn, brand, name, pet, acceptance, safety, note,
+               create_missing: bool = False) -> str:
+    """Apply one template row. Returns 'noop' (blank row), 'updated', or 'created'
+    (a new catalog food was added because create_missing=True). Raises ValueError with a
+    clear message on bad pet/food/value so callers can report per row."""
     brand = (brand or "").strip() or None
     name = (name or "").strip()
     pet = (pet or "").strip()
@@ -126,7 +133,7 @@ def import_row(conn, brand, name, pet, acceptance, safety, note) -> bool:
     note = (note or "").strip() or None
 
     if acceptance is None and safety is None and note is None:
-        return False
+        return "noop"
 
     prow = conn.execute("SELECT id FROM pets WHERE name ILIKE %s", (pet,)).fetchone()
     if not prow:
@@ -139,12 +146,26 @@ def import_row(conn, brand, name, pet, acceptance, safety, note) -> bool:
         matches = conn.execute(
             "SELECT id FROM foods WHERE name ILIKE %s AND brand IS NULL", (name,)
         ).fetchall()
-    if not matches:
-        raise ValueError(f"no food matching brand={brand!r} name={name!r}")
     if len(matches) > 1:
         raise ValueError(f"ambiguous food brand={brand!r} name={name!r}")
-    _upsert(conn, prow["id"], matches[0]["id"], acceptance, safety, note)
-    return True
+
+    created = False
+    if not matches:
+        if not create_missing:
+            raise ValueError(f"no food matching brand={brand!r} name={name!r} "
+                             f"(use --create-missing to add it)")
+        if not name:
+            raise ValueError("cannot create a food with an empty name")
+        fid = conn.execute(
+            "INSERT INTO foods (name, brand, source) VALUES (%s, %s, 'manual') RETURNING id",
+            (name, brand),
+        ).fetchone()["id"]
+        created = True
+    else:
+        fid = matches[0]["id"]
+
+    _upsert(conn, prow["id"], fid, acceptance, safety, note)
+    return "created" if created else "updated"
 
 
 def reorder_list(conn, tier: Optional[str] = None) -> list[dict]:

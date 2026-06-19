@@ -119,7 +119,8 @@ def cmd_list_assessments(args) -> int:
 
 def cmd_template(args) -> int:
     with connect() as conn:
-        rows = preferences.template_rows(conn)
+        rows = preferences.template_rows(conn, current=args.current,
+                                         include_do_not_buy=args.include_do_not_buy)
     out = open(args.out, "w", newline="") if args.out else sys.stdout
     try:
         w = csv.DictWriter(out, fieldnames=preferences.TEMPLATE_COLUMNS)
@@ -136,7 +137,7 @@ def cmd_template(args) -> int:
 
 
 def cmd_import_assessments(args) -> int:
-    applied, errors = 0, []
+    applied, created, errors = 0, [], []
     with connect() as conn, open(args.infile, newline="") as fh:
         reader = csv.DictReader(fh)
         missing = set(preferences.TEMPLATE_COLUMNS) - set(reader.fieldnames or [])
@@ -144,15 +145,22 @@ def cmd_import_assessments(args) -> int:
             raise SystemExit(f"CSV missing columns: {sorted(missing)}")
         for i, row in enumerate(reader, start=2):  # header is line 1
             try:
-                if preferences.import_row(conn, row["brand"], row["name"], row["pet"],
-                                          row["acceptance"], row["safety"], row["note"]):
+                result = preferences.import_row(
+                    conn, row["brand"], row["name"], row["pet"],
+                    row["acceptance"], row["safety"], row["note"],
+                    create_missing=args.create_missing)
+                if result != "noop":
                     applied += 1
+                if result == "created":
+                    created.append(f"[{row['brand']}] {row['name']}".strip())
             except ValueError as e:
                 errors.append(f"  line {i}: {e}")
         if errors:
             # Whole import rolls back on any error (db.connect raises -> rollback).
             raise SystemExit(f"{len(errors)} row(s) failed; nothing imported:\n" + "\n".join(errors))
     print(f"Imported {applied} assessment row(s).")
+    if created:
+        print(f"Created {len(set(created))} new food(s): " + ", ".join(sorted(set(created))))
     return 0
 
 
@@ -241,10 +249,16 @@ def build_parser() -> argparse.ArgumentParser:
     tp = sub.add_parser("template",
                         help="export the food x cat capture CSV (stdout or --out FILE)")
     tp.add_argument("--out", help="write to FILE instead of stdout")
+    tp.add_argument("--current", action="store_true",
+                    help="only the hand-entered rotation foods (skip imported history/candidates)")
+    tp.add_argument("--include-do-not-buy", action="store_true", dest="include_do_not_buy",
+                    help="also include foods flagged do_not_buy")
     tp.set_defaults(func=cmd_template)
 
     ia = sub.add_parser("import-assessments", help="load a filled-in capture CSV")
     ia.add_argument("--in", dest="infile", required=True, help="CSV path")
+    ia.add_argument("--create-missing", action="store_true", dest="create_missing",
+                    help="add catalog foods for rows whose (brand, name) isn't found yet")
     ia.set_defaults(func=cmd_import_assessments)
 
     ial = sub.add_parser("import-allergens",

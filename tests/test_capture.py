@@ -25,29 +25,53 @@ def _migrated():
 
 def test_template_covers_every_food_pet_pair():
     with connect() as conn:
-        n_foods = conn.execute("SELECT count(*) c FROM foods WHERE NOT discontinued").fetchone()["c"]
+        # default template skips do_not_buy foods
+        n_foods = conn.execute(
+            "SELECT count(*) c FROM foods WHERE NOT discontinued AND NOT do_not_buy").fetchone()["c"]
         n_pets = conn.execute("SELECT count(*) c FROM pets").fetchone()["c"]
         rows = preferences.template_rows(conn)
     assert len(rows) == n_foods * n_pets
     assert set(preferences.TEMPLATE_COLUMNS).issubset(rows[0].keys())
 
 
+def test_template_current_is_rotation_only():
+    with connect() as conn:
+        rows = preferences.template_rows(conn, current=True)
+        n_manual = conn.execute("SELECT count(*) c FROM foods WHERE source='manual'").fetchone()["c"]
+        n_pets = conn.execute("SELECT count(*) c FROM pets").fetchone()["c"]
+    assert len(rows) == n_manual * n_pets
+
+
 def test_blank_row_is_noop():
     with connect() as conn:
         before = conn.execute("SELECT count(*) c FROM assessments").fetchone()["c"]
-        changed = preferences.import_row(conn, "", "Mack & Jack", "Gwen", "", "", "")
+        result = preferences.import_row(conn, "", "Mack & Jack", "Gwen", "", "", "")
         after = conn.execute("SELECT count(*) c FROM assessments").fetchone()["c"]
-    assert changed is False
+    assert result == "noop"
     assert before == after
 
 
 def test_filled_row_upserts_and_drives_gate():
     with connect() as conn:
         # Troy rejects a previously-fine food -> it leaves the reorder list
-        changed = preferences.import_row(conn, "", "catalina catch", "Troy", "rejects", "", "")
+        result = preferences.import_row(conn, "", "catalina catch", "Troy", "rejects", "", "")
         names = {r["name"] for r in preferences.reorder_list(conn)}
-    assert changed is True
+    assert result == "updated"
     assert "catalina catch" not in names
+
+
+def test_create_missing_adds_food():
+    with connect() as conn:
+        # A food "in my head" not in the catalog: rejected without the flag...
+        with pytest.raises(ValueError):
+            preferences.import_row(conn, "Tiki Cat", "Ahi Tuna", "Troy", "loves", "", "")
+        # ...created with it
+        result = preferences.import_row(conn, "Tiki Cat", "Ahi Tuna", "Troy", "loves", "", "",
+                                        create_missing=True)
+        exists = conn.execute(
+            "SELECT 1 FROM foods WHERE brand='Tiki Cat' AND name='Ahi Tuna'").fetchone()
+    assert result == "created"
+    assert exists is not None
 
 
 def test_bad_value_raises_valueerror():

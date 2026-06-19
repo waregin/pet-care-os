@@ -36,10 +36,27 @@ petcareos migrate             # apply migrations/*.sql (schema + seed)
 ```bash
 petcareos reorder-list                 # the v1 deliverable
 petcareos list-foods
+petcareos list-pets
 petcareos add-food --name "paw lickin chicken" --brand Weruva --form pate --can-size 5.5
-petcareos assess --pet Samson --food "tuna & shrimp" --safety safe
-petcareos assess --pet Troy   --food "tuna & shrimp" --acceptance loves
+petcareos add-pet  --name Henry --species dog
 ```
+
+### Capturing assessments (bulk, via CSV)
+```bash
+petcareos template --out caps.csv      # food x cat grid, pre-filled with current values
+# edit caps.csv: set acceptance (loves/eats/tolerates/rejects) and safety (safe/unsafe); blanks ignored
+petcareos import-assessments --in caps.csv
+petcareos list-assessments --pet Troy
+```
+…or one at a time: `petcareos assess --pet Troy --food "tuna & shrimp" --acceptance loves`
+
+### Samson's allergy panel
+All current foods are seeded safe for Samson. Store the panel itself (allergen + score):
+```bash
+petcareos import-allergens --pet Samson --in samson_allergens.csv   # columns: allergen[,score][,note]
+petcareos list-allergens --pet Samson
+```
+Automated food↔allergen matching (deriving the safety gate from ingredients) is backlog issue #4.
 
 ## Layout
 ```

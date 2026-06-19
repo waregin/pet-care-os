@@ -51,3 +51,26 @@ def test_unknown_does_not_exclude():
         names = _names(preferences.reorder_list(conn))
     # Never-assessed-by-gates food is still offered (just not vetted)
     assert "Monterey medley" in names
+
+
+def test_proven_vs_candidate_tiers():
+    with connect() as conn:
+        # Untried-but-safe food is a candidate, not proven
+        before = {r["name"]: r["tier"] for r in preferences.reorder_list(conn)}
+        assert before.get("Monterey medley") == "candidate"
+        # Once the gate cat eats it, it becomes proven and appears under --proven
+        preferences.assess(conn, "Troy", "Monterey medley", acceptance="eats")
+        proven = _names(preferences.reorder_list(conn, tier="proven"))
+        candidates = _names(preferences.reorder_list(conn, tier="candidate"))
+    assert "Monterey medley" in proven
+    assert "Monterey medley" not in candidates
+
+
+def test_do_not_buy_excluded():
+    with connect() as conn:
+        # A do_not_buy food (seeded from the trial sheet) never appears
+        n = conn.execute(
+            "SELECT count(*) c FROM reorderable_foods r JOIN foods f ON f.id=r.id "
+            "WHERE f.do_not_buy"
+        ).fetchone()["c"]
+    assert n == 0

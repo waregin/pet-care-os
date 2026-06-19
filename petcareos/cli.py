@@ -186,14 +186,18 @@ def cmd_list_allergens(args) -> int:
     return 0
 
 
-def cmd_reorder_list(_args) -> int:
+def cmd_reorder_list(args) -> int:
+    tier = "proven" if args.proven else "candidate" if args.candidates else None
     with connect() as conn:
-        rows = preferences.reorder_list(conn)
-    print("Safe & accepted to (re)order "
-          "(safety gate = Samson/allergies, acceptance gate = Troy/pickiness):\n")
-    _print_table(rows, ["brand", "name", "form", "safety_gate_status", "acceptance_gate_status"])
-    print("\nNote: blank gate status = not yet assessed. A food is excluded only when a gate "
-          "cat marks it unsafe (Samson) or rejects it (Troy).")
+        rows = preferences.reorder_list(conn, tier=tier)
+    label = {"proven": "Proven & accepted", "candidate": "Safe candidates to try",
+             None: "Safe to (re)order"}[tier]
+    print(f"{label} (safety gate = Samson/allergies, acceptance gate = Troy/pickiness):\n")
+    _print_table(rows, ["tier", "brand", "name", "form",
+                        "safety_gate_status", "acceptance_gate_status"])
+    print("\nproven = Troy has actually eaten it; candidate = safe but never tried. "
+          "Excluded only when Samson=unsafe, Troy=rejects, or do_not_buy. "
+          "Filter with --proven / --candidates.")
     return 0
 
 
@@ -262,9 +266,12 @@ def build_parser() -> argparse.ArgumentParser:
     asmt.add_argument("--note")
     asmt.set_defaults(func=cmd_assess)
 
-    sub.add_parser("reorder-list",
-                   help="the v1 deliverable: safe & accepted foods to order").set_defaults(
-        func=cmd_reorder_list)
+    rl = sub.add_parser("reorder-list",
+                        help="the v1 deliverable: safe & accepted foods to order")
+    rl_g = rl.add_mutually_exclusive_group()
+    rl_g.add_argument("--proven", action="store_true", help="only foods Troy has eaten")
+    rl_g.add_argument("--candidates", action="store_true", help="only safe, never-tried foods")
+    rl.set_defaults(func=cmd_reorder_list)
 
     return p
 

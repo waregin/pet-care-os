@@ -147,13 +147,22 @@ def import_row(conn, brand, name, pet, acceptance, safety, note) -> bool:
     return True
 
 
-def reorder_list(conn) -> list[dict]:
-    """Foods that are safe (no safety-gate cat says unsafe) and accepted (no acceptance-gate
-    cat rejects). Surfaces gate statuses so unknowns/risks are visible."""
-    return conn.execute(
+def reorder_list(conn, tier: Optional[str] = None) -> list[dict]:
+    """Foods that are safe (no safety-gate cat says unsafe), not rejected by the acceptance
+    gate, and not flagged do_not_buy. Each row is tiered:
+      * 'proven'    — the acceptance-gate cat has actually eaten it (loves/eats/tolerates)
+      * 'candidate' — safe but never tried by the gate cat yet
+    Optional tier filter ('proven' / 'candidate'). Proven sort first."""
+    rows = conn.execute(
         """
-        SELECT brand, name, form, safety_gate_status, acceptance_gate_status
+        SELECT brand, name, form, safety_gate_status, acceptance_gate_status,
+               CASE WHEN acceptance_gate_status IN ('loves', 'eats', 'tolerates')
+                    THEN 'proven' ELSE 'candidate' END AS tier
         FROM reorderable_foods
-        ORDER BY brand NULLS FIRST, name
+        ORDER BY (acceptance_gate_status IN ('loves', 'eats', 'tolerates')) DESC,
+                 brand NULLS FIRST, name
         """
     ).fetchall()
+    if tier:
+        rows = [r for r in rows if r["tier"] == tier]
+    return rows

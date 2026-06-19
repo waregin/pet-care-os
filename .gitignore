@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Local config / secrets
+.env
+
+# Editor / OS
+.DS_Store
+*.swp

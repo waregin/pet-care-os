@@ -161,16 +161,19 @@ def cmd_import_allergens(args) -> int:
     with connect() as conn, open(args.infile, newline="") as fh:
         pid = allergens._pet_id(conn, args.pet)
         reader = csv.DictReader(fh)
-        cols = {c.lower(): c for c in (reader.fieldnames or [])}
-        if "allergen" not in cols:
-            raise SystemExit(f"CSV needs an 'allergen' column; got {reader.fieldnames}")
+        cols = allergens.resolve_columns(reader.fieldnames or [])
+        if not cols["allergen"]:
+            raise SystemExit(
+                f"CSV needs an allergen column (one of allergen/name); got {reader.fieldnames}")
         for row in reader:
             allergen = (row[cols["allergen"]] or "").strip()
             if not allergen:
                 continue
-            score = (row.get(cols.get("score", ""), "") or "").strip() or None
-            note = (row.get(cols.get("note", ""), "") or "").strip() or None
-            allergens.upsert_allergen(conn, pid, allergen, score, note, source="import")
+            score = (row.get(cols["score"], "") or "").strip() or None if cols["score"] else None
+            category = ((row.get(cols["category"], "") or "").strip() or None
+                        if cols["category"] else None)
+            note = (row.get(cols["note"], "") or "").strip() or None if cols["note"] else None
+            allergens.upsert_allergen(conn, pid, allergen, score, category, note, source="import")
             applied += 1
     print(f"Imported {applied} allergen(s) for {args.pet}.")
     return 0
@@ -179,7 +182,7 @@ def cmd_import_allergens(args) -> int:
 def cmd_list_allergens(args) -> int:
     with connect() as conn:
         rows = allergens.list_allergens(conn, pet=args.pet)
-    _print_table(rows, ["pet", "allergen", "score", "note"])
+    _print_table(rows, ["pet", "category", "allergen", "score", "note"])
     return 0
 
 
